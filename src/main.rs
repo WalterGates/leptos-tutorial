@@ -1,89 +1,90 @@
-use leptos::{*, ev::MouseEvent};
+use leptos::*;
 
-#[derive(Copy, Clone)]
-struct SmallcapsContext(WriteSignal<bool>);
+// Often, you want to pass some kind of child view to another
+// component. There are two basic patterns for doing this:
+// - "render props": creating a component prop that takes a function
+//   that creates a view
+// - the `children` prop: a special property that contains content
+//   passed as the children of a component in your view, not as a
+//   property
 
 #[component]
-fn App() -> impl IntoView {
-    let (red, set_red) = create_signal(false);
-    let (right, set_right) = create_signal(false);
-    let (italics, set_italics) = create_signal(false);
-    let (smallcaps, set_smallcaps) = create_signal(false);
-
-    provide_context(SmallcapsContext(set_smallcaps));
+pub fn App() -> impl IntoView {
+    let (items, set_items) = create_signal(vec![0, 1, 2]);
+    let render_prop = move || {
+        // items.with(...) reacts to the value without cloning
+        // by applying a function. Here, we pass the `len` method
+        // on a `Vec<_>` directly
+        let len = move || items.with(Vec::len);
+        view! {
+            <p>"Length: " {len}</p>
+        }
+    };
 
     view! {
-        <main>
-            <p
-                class:red=red
-                class:right=right
-                class:italics=italics
-                class:smallcaps=smallcaps
-            >
-                "Lorem ipsum sit dolor amet."
-            </p>
-            <ButtonA setter=set_red/>
-            <ButtonB on_click=move |_| set_right.update(|val| *val = !*val)/>
-            <ButtonC on:click=move |_| set_italics.update(|val| *val = !*val)/>
-            <ButtonD/>
-        </main>
-    }
-}
-
-/// Button A recieves a signal setter and updates the signal itself
-#[component]
-fn ButtonA(
-    /// Signal that will be toggled when the button is clicked.
-    setter: WriteSignal<bool>,
-) -> impl IntoView {
-    view! {
-        <button
-            on:click=move |_| setter.update(|val| *val = !*val)
+        // This component just displays the two kinds of children,
+        // embedding them in some other markup
+        <TakesChildren
+            // for component props, you can shorthand
+            // `render_prop=render_prop` => `render_prop`
+            // (this doesn't work for HTML element attributes)
+            render_prop
         >
-            "Toggle Red"
-        </button>
+            // these look just like the children of an HTML element
+            <p>"Here's a child."</p>
+            <p>"Here's another child."</p>
+        </TakesChildren>
+        <hr/>
+        // This component actually iterates over and wraps the children
+        <WrapsChildren>
+            <p>"Here's a child."</p>
+            <p>"Here's another child."</p>
+        </WrapsChildren>
     }
 }
 
-/// Button B recieves a closure
+/// Displays a `render_prop` and some children within markup.
 #[component]
-fn ButtonB<F>(
-    /// Callback that will be invoked when the button is clicked.
-    on_click: F,
+pub fn TakesChildren<F, IV>(
+    /// Takes a function (type F) that returns anything that can be
+    /// converted into a View (type IV)
+    render_prop: F,
+    /// `children` takes the `Children` type
+    /// this is an alias for `Box<dyn FnOnce() -> Fragment>`
+    /// ... aren't you glad we named it `Children` instead?
+    children: Children,
 ) -> impl IntoView
 where
-    F: Fn(MouseEvent) + 'static,
+    F: Fn() -> IV,
+    IV: IntoView,
 {
     view! {
-        <button
-            on:click=on_click
-        >
-            "Toggle Right"
-        </button>
+        <h1><code>"<TakesChildren/>"</code></h1>
+        <h2>"Render Prop"</h2>
+        {render_prop()}
+        <hr/>
+        <h2>"Children"</h2>
+        {children()}
     }
 }
 
-/// Button C is a dummy: it renders a button but doesn't handle
-/// its click. Instead, the parent component adds an event listener.
+/// Wraps each child in an `<li>` and embeds them in a `<ul>`.
 #[component]
-fn ButtonC() -> impl IntoView {
-    view! {
-        <button>
-            "Toggle Italics"
-        </button>
-    }
-}
-
-/// Button D is very similar to Button A, but instead of passing the setter as a prop
-/// we get it from the context
-#[component]
-fn ButtonD() -> impl IntoView {
-    let setter = use_context::<SmallcapsContext>().expect("to have found the setter provided").0;
+pub fn WrapsChildren(children: Children) -> impl IntoView {
+    // children() returns a `Fragment`, which has a
+    // `nodes` field that contains a Vec<View>
+    // this means we can iterate over the children
+    // to create something new!
+    let children = children()
+        .nodes
+        .into_iter()
+        .map(|child| view! { <li>{child}</li> })
+        .collect_view();
 
     view! {
-        <button on:click = move |_| setter.update(|value| *value = !*value)>
-            "Toggle"
-        </button>
+        <h1><code>"<WrapsChildren/>"</code></h1>
+        // wrap our wrapped children in a UL
+        <ul>{children}</ul>
     }
 }
 
